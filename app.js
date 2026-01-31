@@ -158,21 +158,21 @@ function allSubseq4(row){
       // all 4-of-6 subsequences (order preserved, not necessarily adjacent)
 const subs = allSubseq4(row);
 
-for (const seq of subs){
-  let wOk = true;
-  for (const s of selected){
-    if (!seq.includes(s)) { wOk = false; break; }
-  }
-  if (!wOk) continue;
+  for (const seq of subs){
+    let wOk = true;
+    for (const s of selected){
+      if (!seq.includes(s)) { wOk = false;   break; }
+    }
+    if (!wOk) continue;
 
-  const k = seqKey(seq);
-  const seen = mem.sequences[k] || 0;
+    const k = seqKey(seq);
+    const seen = mem.sequences[k] || 0;
 
   // Laplace smoothing so unseen sequences still have weight 1
-  const weight = (seen + 1);
+    const weight = (seen + 1);
 
-  hypotheses.push({ seq, weight });
-}
+    hypotheses.push({ seq, weight });
+  }
 }
 
     const totalWeight = hypotheses.reduce((sum,h)=>sum+h.weight, 0);
