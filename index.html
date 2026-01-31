@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#070a12" />
+  <title>Beast Floppy Tool</title>
+
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <style>
+    :root{
+      --bg:#070a12;
+      --panel:rgba(255,255,255,.06);
+      --panel2:rgba(255,255,255,.09);
+      --stroke:rgba(255,255,255,.10);
+      --text:rgba(255,255,255,.92);
+      --muted:rgba(255,255,255,.65);
+      --muted2:rgba(255,255,255,.45);
+      --good:#5dffb6;
+      --bad:#ff5d7d;
+      --accent:#7aa7ff;
+      --radius:16px;
+      --shadow:0 14px 42px rgba(0,0,0,.45);
+    }
+
+    *{box-sizing:border-box;}
+    body{
+      margin:0;
+      font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background:
+        radial-gradient(1200px 700px at 50% -10%, rgba(122,167,255,.18), transparent 60%),
+        radial-gradient(900px 600px at 10% 15%, rgba(93,255,182,.10), transparent 55%),
+        radial-gradient(900px 600px at 90% 20%, rgba(255,93,125,.10), transparent 55%),
+        var(--bg);
+      color:var(--text);
+      min-height:100vh;
+      padding: env(safe-area-inset-top) 14px env(safe-area-inset-bottom) 14px;
+    }
+
+    header{
+      position:sticky; top:0; z-index:10;
+      padding:10px 0 10px 0;
+      backdrop-filter: blur(10px);
+      background: linear-gradient(to bottom, rgba(7,10,18,.88), rgba(7,10,18,.30));
+    }
+
+    .topRow{
+      display:flex;
+      gap:10px;
+      align-items:flex-start;
+      justify-content:space-between;
+    }
+
+    h1{
+      margin:0;
+      font-size:18px;
+      letter-spacing:.2px;
+      line-height:1.15;
+    }
+    .sub{
+      margin-top:6px;
+      font-size:12.5px;
+      color:var(--muted);
+      line-height:1.35;
+    }
+
+    .btnRow{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      justify-content:flex-end;
+    }
+
+    button{
+      border:0;
+      border-radius:12px;
+      padding:10px 12px;
+      background:var(--panel);
+      color:var(--text);
+      font-weight:750;
+      font-size:13px;
+      box-shadow: 0 8px 18px rgba(0,0,0,.25);
+      cursor:pointer;
+      transition: transform .12s ease, background .12s ease, opacity .12s ease;
+      -webkit-tap-highlight-color: transparent;
+      user-select:none;
+      white-space:nowrap;
+    }
+    button:active{ transform: scale(.985); }
+    button.danger{ background: rgba(255,93,125,.16); }
+    button.primary{ background: rgba(122,167,255,.18); }
+    button:disabled{ opacity:.5; cursor:not-allowed; }
+
+    .pills{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      margin-top:10px;
+    }
+    .pill{
+      font-size:12px;
+      padding:7px 10px;
+      border-radius:999px;
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.08);
+      color:var(--muted);
+    }
+    .pill strong{ color:var(--text); }
+
+    main{
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      padding-bottom:16px;
+    }
+
+    .card{
+      background:var(--panel);
+      border:1px solid rgba(255,255,255,.08);
+      border-radius:var(--radius);
+      padding:12px;
+      box-shadow:var(--shadow);
+    }
+
+    .grid{
+      display:grid;
+      grid-template-columns: repeat(4, minmax(0,1fr));
+      gap:10px;
+      margin-top:10px;
+    }
+    @media (min-width:520px){
+      .grid{ grid-template-columns: repeat(6, minmax(0,1fr)); }
+      h1{ font-size:20px; }
+    }
+
+    .tile{
+      position:relative;
+      border-radius:14px;
+      background: rgba(255,255,255,.05);
+      border:1px solid rgba(255,255,255,.10);
+      padding:10px 8px;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      justify-content:center;
+      gap:8px;
+      min-height:86px;
+      cursor:pointer;
+      transition:
+        transform .12s ease,
+        border-color .16s ease,
+        background .16s ease,
+        filter .18s ease,
+        opacity .22s ease;
+      -webkit-tap-highlight-color: transparent;
+      user-select:none;
+      overflow:hidden;
+    }
+    .tile:active{ transform: scale(.985); }
+
+    .tile::after{
+      content:"";
+      position:absolute;
+      inset:-35%;
+      background: radial-gradient(circle at 50% 30%, rgba(122,167,255,.22), transparent 56%);
+      opacity:0;
+      transition: opacity .18s ease;
+      pointer-events:none;
+    }
+    .tile.selected{
+      border-color: rgba(122,167,255,.58);
+      background: rgba(122,167,255,.12);
+      box-shadow: 0 0 0 1px rgba(122,167,255,.18), 0 12px 30px rgba(122,167,255,.14);
+    }
+    .tile.selected::after{ opacity:1; }
+
+    .tile.impossible{
+      opacity:.30;
+      filter: grayscale(1) saturate(.2);
+    }
+
+    .iconWrap{
+      width:48px; height:48px;
+      border-radius:12px;
+      background: rgba(0,0,0,.22);
+      border:1px solid rgba(255,255,255,.10);
+      display:grid;
+      place-items:center;
+      overflow:hidden;
+    }
+    @media (max-width:390px){
+      .iconWrap{ width:44px; height:44px; }
+    }
+    img.icon{
+      width:92%; height:92%;
+      object-fit:contain;
+      transform: translateZ(0);
+    }
+    .label{
+      font-size:11.5px;
+      color:var(--muted);
+      text-align:center;
+      line-height:1.1;
+    }
+
+    .panelHeader{
+      display:flex;
+      align-items:baseline;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:8px;
+    }
+    .panelHeader .muted{
+      color:var(--muted2);
+      font-size:12px;
+    }
+
+    .lockBanner{
+      display:none;
+      margin:10px 0 12px 0;
+      padding:10px 12px;
+      border-radius:14px;
+      background: rgba(93,255,182,.10);
+      border: 1px solid rgba(93,255,182,.22);
+    }
+    .lockBanner strong{ color: rgba(255,255,255,.92); }
+    .lockBanner .small{ color: rgba(255,255,255,.72); font-size:12px; margin-top:2px; }
+
+    .predBlock{
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+
+    .posRow{
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      padding:10px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.045);
+    }
+    .posTitle{
+      font-weight:850;
+      letter-spacing:.2px;
+      display:flex;
+      justify-content:space-between;
+      gap:10px;
+      align-items:baseline;
+    }
+    .posTitle span{ color: var(--muted2); font-weight:700; font-size:12px; }
+
+    .choices{
+      display:flex;
+      gap:8px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+    .choice{
+      display:inline-flex;
+      gap:6px;
+      align-items:center;
+      padding:7px 10px;
+      border-radius:999px;
+      background: rgba(0,0,0,.18);
+      border:1px solid rgba(255,255,255,.09);
+      color:rgba(255,255,255,.86);
+      font-size:12px;
+    }
+    .choice .pct{
+      color: var(--accent);
+      font-weight:850;
+    }
+    .miniIcon{
+      width:16px; height:16px;
+      border-radius:5px;
+      background: rgba(255,255,255,.06);
+      border:1px solid rgba(255,255,255,.08);
+      overflow:hidden;
+      display:grid;
+      place-items:center;
+    }
+    .miniIcon img{ width:92%; height:92%; object-fit:contain; }
+
+    .bigLine{
+      margin-top:12px;
+      padding:10px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.08);
+      background: rgba(255,255,255,.04);
+      line-height:1.35;
+      color: var(--muted);
+      font-size:12.5px;
+    }
+    .bigLine strong{ color: rgba(255,255,255,.92); }
+
+    .hint{
+      color: var(--muted);
+      font-size:12.5px;
+      line-height:1.35;
+    }
+    code{ color: rgba(255,255,255,.85); }
+  </style>
+</head>
+
+<body>
+<header>
+  <div class="topRow">
+    <div>
+      <h1>Beast Floppy Tool</h1>
+      <div class="sub">
+        Tap the discs that spawned (1–4). Tool infers the most likely 1st→4th order and learns from your saved games.
+      </div>
+    </div>
+    <div class="btnRow">
+      <button id="undoBtn" title="Undo last tap">Undo</button>
+      <button id="resetBtn" class="danger" title="Reset">Reset</button>
+
+      <button id="saveGameBtn" class="primary" title="Save final sequence (guaranteed only)" disabled>Save Game</button>
+      <button id="exportBtn" title="Export memory JSON">Export</button>
+      <button id="importBtn" title="Import memory JSON">Import</button>
+      <button id="clearMemBtn" class="danger" title="Clear memory">Clear Mem</button>
+    </div>
+  </div>
+
+  <div class="pills" id="pills"></div>
+</header>
+
+<main>
+  <section class="card">
+    <div class="hint">
+      All 12 symbols stay visible. Selected ones glow. Symbols that can’t appear in any remaining valid sequence fade out.
+    </div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <section class="card">
+    <div class="panelHeader">
+      <div>
+        <div style="font-weight:900; letter-spacing:.2px;">Predicted order</div>
+        <div class="muted" id="subline">Select 1–4 symbols to begin…</div>
+      </div>
+      <button id="lockBtn" class="primary" disabled>Lock (Guaranteed Only)</button>
+    </div>
+
+    <div class="lockBanner" id="lockBanner">
+      <div><strong>Guaranteed:</strong> only one possible sequence remains.</div>
+      <div class="small">UI is locked. Reset to start a new run.</div>
+    </div>
+
+    <div class="predBlock" id="predBlock"></div>
+
+    <div class="bigLine" id="summaryLine" style="display:none;"></div>
+
+    <div class="bigLine" style="margin-top:10px;">
+      <strong>How it works:</strong> Filters your 6 row-orders, then checks only the 4-wide sliding windows (0–3, 1–4, 2–5).
+      Probabilities are weighted by your saved history (local on device).
+    </div>
+  </section>
+</main>
+
+<input id="importFile" type="file" accept="application/json" style="display:none" />
+
+<script src="./app.js"></script>
+</body>
+</html>
