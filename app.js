@@ -173,7 +173,7 @@ for (const seq of subs){
 
   hypotheses.push({ seq, weight });
 }
-
+}
 
     const totalWeight = hypotheses.reduce((sum,h)=>sum+h.weight, 0);
 
