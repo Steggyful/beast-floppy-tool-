@@ -110,6 +110,22 @@
   const clearMemBtn = document.getElementById("clearMemBtn");
   const importFile = document.getElementById("importFile");
 
+function allSubseq4(row){
+  const out = [];
+  // choose 4 indices i<j<k<l from 0..5 (C(6,4)=15)
+  for (let i = 0; i < 6; i++){
+    for (let j = i+1; j < 6; j++){
+      for (let k = j+1; k < 6; k++){
+        for (let l = k+1; l < 6; l++){
+          out.push([row[i], row[j], row[k], row[l]]);
+        }
+      }
+    }
+  }
+  return out;
+}
+
+
   // =========================
   //  INFERENCE ENGINE (weighted by memory)
   // =========================
@@ -139,25 +155,25 @@
       }
       if (!ok) continue;
 
-      // sliding windows [0..3], [1..4], [2..5]
-      for (let start = 0; start <= 2; start++){
-        const win = row.slice(start, start + 4);
+      // all 4-of-6 subsequences (order preserved, not necessarily adjacent)
+const subs = allSubseq4(row);
 
-        let wOk = true;
-        for (const s of selected){
-          if (!win.includes(s)) { wOk = false; break; }
-        }
-        if (!wOk) continue;
+for (const seq of subs){
+  let wOk = true;
+  for (const s of selected){
+    if (!seq.includes(s)) { wOk = false; break; }
+  }
+  if (!wOk) continue;
 
-        const k = seqKey(win);
-        const seen = mem.sequences[k] || 0;
+  const k = seqKey(seq);
+  const seen = mem.sequences[k] || 0;
 
-        // Laplace smoothing so unseen sequences still have weight 1
-        const weight = (seen + 1);
+  // Laplace smoothing so unseen sequences still have weight 1
+  const weight = (seen + 1);
 
-        hypotheses.push({ seq: win, start, weight });
-      }
-    }
+  hypotheses.push({ seq, weight });
+}
+
 
     const totalWeight = hypotheses.reduce((sum,h)=>sum+h.weight, 0);
 
