@@ -11,8 +11,10 @@
     ["v","v-trap","x","closed-box","d-wings","d-v"],                     // Row 6
   ];
 
+  // All 12 unique symbols
   const ALL = Array.from(new Set(ROWS.flat())).sort();
 
+  // Symbol display metadata
   const META = Object.fromEntries(ALL.map(sym => ([
     sym,
     {
@@ -88,7 +90,7 @@
   const state = {
     selected: new Set(),
     tapHistory: [],
-    locked: false,
+    locked: false,   // locks only when guaranteed + user taps Lock
   };
 
   // =========================
@@ -111,7 +113,11 @@
   const importFile = document.getElementById("importFile");
 
   // =========================
-  //  INFERENCE ENGINE (weighted by memory)
+  //  INFERENCE ENGINE
+  //  Sliding 4-wide windows in each 6-symbol row:
+  //    windows: [0..3], [1..4], [2..5]
+  //  Each valid window is a hypothesis (candidate 4-sequence).
+  //  Hypotheses are weighted by saved memory (Laplace smoothing).
   // =========================
   function infer(selectedSet){
     const selected = Array.from(selectedSet);
@@ -139,7 +145,7 @@
       }
       if (!ok) continue;
 
-      // sliding windows [0..3], [1..4], [2..5]
+      // sliding windows
       for (let start = 0; start <= 2; start++){
         const win = row.slice(start, start + 4);
 
@@ -152,7 +158,7 @@
         const k = seqKey(win);
         const seen = mem.sequences[k] || 0;
 
-        // Laplace smoothing so unseen sequences still have weight 1
+        // Laplace smoothing: new sequences still have weight 1
         const weight = (seen + 1);
 
         hypotheses.push({ seq: win, start, weight });
@@ -164,6 +170,7 @@
     const possibleSymbols = new Set();
     for (const h of hypotheses) h.seq.forEach(s => possibleSymbols.add(s));
 
+    // Weighted counts by position
     const positionStats = [new Map(), new Map(), new Map(), new Map()];
     for (const h of hypotheses){
       for (let i = 0; i < 4; i++){
@@ -172,6 +179,7 @@
       }
     }
 
+    // Best gamble: highest weighted symbol per position
     let bestSequence = null;
     if (hypotheses.length > 0){
       bestSequence = [];
@@ -182,6 +190,7 @@
       }
     }
 
+    // Confidence = probability of the single most-likely full hypothesis (by weight)
     let topHypProb = 0;
     if (totalWeight > 0){
       const topW = Math.max(...hypotheses.map(h => h.weight));
@@ -200,50 +209,40 @@
   }
 
   // =========================
-  //  UI helpers
-  // =========================
-  function fmtPct(p){
-    return `${Math.round(p * 100)}%`;
-  }
-
-  function suffix(n){
-    if (n % 100 >= 11 && n % 100 <= 13) return "th";
-    if (n % 10 === 1) return "st";
-    if (n % 10 === 2) return "nd";
-    if (n % 10 === 3) return "rd";
-    return "th";
-  }
-
-  // =========================
   //  UI RENDER
   // =========================
+  function fmtPct(p){
+    const pct = Math.round(p * 100);
+    return `${pct}%`;
+  }
+
   function render(){
     const result = infer(state.selected);
     const selCount = state.selected.size;
     const N = result.hypotheses.length;
 
-    // Save only when guaranteed and not locked
+    // Enable Save only when truly guaranteed and not locked
     saveGameBtn.disabled = !(N === 1 && !state.locked);
 
     // Pills
     const mem = loadMemory();
     const pills = [];
     pills.push(`<span class="pill"><strong>${selCount}</strong> selected</span>`);
-    pills.push(`<span class="pill"><strong>${mem.totalSaved || 0}</strong> saved</span>`);
+    pills.push(`<span class="pill"><strong>${mem.totalSaved || 0}</strong> saved games</span>`);
 
     if (selCount > 4){
       pills.push(`<span class="pill" style="border-color: rgba(255,93,125,.35); background: rgba(255,93,125,.10); color: rgba(255,255,255,.85);">
         <strong>Too many</strong> (max 4)
       </span>`);
     } else {
-      pills.push(`<span class="pill"><strong>${N}</strong> left</span>`);
+      pills.push(`<span class="pill"><strong>${N}</strong> possible sequence${N===1?"":"s"}</span>`);
       if (N === 0 && selCount > 0){
         pills.push(`<span class="pill" style="border-color: rgba(255,93,125,.35); background: rgba(255,93,125,.10); color: rgba(255,255,255,.85);">
-          <strong>No match</strong>
+          <strong>No match</strong> (undo/reset)
         </span>`);
       }
       if (N > 0){
-        pills.push(`<span class="pill"><strong>Conf</strong> ${fmtPct(result.confidence)}</span>`);
+        pills.push(`<span class="pill"><strong>Confidence</strong> ${fmtPct(result.confidence)}</span>`);
       }
       if (state.locked){
         pills.push(`<span class="pill" style="border-color: rgba(93,255,182,.35); background: rgba(93,255,182,.10); color: rgba(255,255,255,.88);">
@@ -257,17 +256,18 @@
     lockBannerEl.style.display = state.locked ? "block" : "none";
 
     if (selCount === 0){
-      sublineEl.textContent = "Select 1–4 symbols…";
+      sublineEl.textContent = "Select 1–4 symbols to begin…";
     } else if (selCount > 4){
-      sublineEl.textContent = "You selected more than 4 (model assumes exactly 4 spawned).";
+      sublineEl.textContent = "You selected more than 4. The model assumes exactly 4 spawned.";
     } else if (N === 0){
       sublineEl.textContent = "No valid sequences remain. Undo/reset and re-tap.";
     } else if (N === 1){
-      sublineEl.textContent = "Guaranteed sequence found. Lock or Save.";
+      sublineEl.textContent = "Guaranteed sequence found. You can lock it or save it.";
     } else {
-      sublineEl.textContent = "Not guaranteed yet -- odds below (weighted by your history).";
+      sublineEl.textContent = "Not guaranteed yet — probabilities shown below (weighted by your history).";
     }
 
+    // Lock button: only enable when guaranteed AND not already locked
     lockBtn.disabled = !(N === 1 && !state.locked);
 
     // Grid: always show all 12
@@ -275,8 +275,9 @@
     for (const sym of ALL){
       const tile = document.createElement("div");
       tile.className = "tile";
-
       const isSelected = state.selected.has(sym);
+
+      // impossible symbol: not in any remaining hypothesis
       const hasFilter = selCount > 0 && selCount <= 4;
       const impossible = hasFilter && N > 0 && !result.possibleSymbols.has(sym);
 
@@ -299,111 +300,97 @@
       gridEl.appendChild(tile);
     }
 
-    // Panel
+    // Prediction panel
     predBlockEl.innerHTML = "";
     summaryLineEl.style.display = "none";
 
-    // Locked + guaranteed display
+    // If locked and guaranteed, show single sequence
     if (state.locked && N === 1){
-      renderGuaranteedIconsOnly(result.hypotheses[0].seq);
+      renderGuaranteed(result.hypotheses[0].seq);
       return;
     }
 
+    // Otherwise show probabilistic breakdown
     if (selCount === 0 || selCount > 4 || N === 0){
       return;
     }
 
-    // Compact 4-slot grid (top2 each) -- ICON + % ONLY
     const total = result.totalWeight;
-
-    const grid = document.createElement("div");
-    grid.className = "posGrid";
 
     for (let pos = 0; pos < 4; pos++){
       const counts = result.positionStats[pos];
       const entries = Array.from(counts.entries()).sort((a,b) => b[1]-a[1]);
-      const top = entries.slice(0, 2);
 
-      const uniqueCount = entries.length;
-      const spreadNote = uniqueCount === 1 ? "lock" : `${uniqueCount}`;
+      const top = entries.slice(0, 3);
 
-      const slot = document.createElement("div");
-      slot.className = "slot";
-
-      slot.innerHTML = `
-        <div class="slotHead">
-          <div>${pos+1}${suffix(pos+1)}</div>
-          <span>${spreadNote}</span>
-        </div>
-        <div class="slotChoices">
-          ${top.map(([sym, c]) => {
-            const p = total > 0 ? (c / total) : 0;
-            return `
-              <div class="chip">
-                <div class="chipLeft">
-                  <span class="miniIcon"><img src="${META[sym].img}" alt="" onerror="this.remove()"></span>
-                </div>
-                <span class="chipPct">${fmtPct(p)}</span>
-              </div>
-            `;
-          }).join("")}
-        </div>
-      `;
-
-      grid.appendChild(slot);
-    }
-
-    predBlockEl.appendChild(grid);
-
-    // Best gamble row -- ICONS ONLY
-    if (result.bestSequence){
-      summaryLineEl.style.display = "block";
-
-      const chainHtml = result.bestSequence.map((sym, idx) => {
-        const pill = `
-          <span class="chainItem">
+      const choicesHtml = top.map(([sym, c]) => {
+        const p = total > 0 ? (c / total) : 0;
+        return `
+          <span class="choice">
             <span class="miniIcon"><img src="${META[sym].img}" alt="" onerror="this.remove()"></span>
+            ${META[sym].label} <span class="pct">${fmtPct(p)}</span>
           </span>
         `;
-        return idx === 0 ? pill : `<span class="arrow">→</span>${pill}`;
       }).join("");
 
-      summaryLineEl.innerHTML = `
-        <div class="bestRow">
-          <strong>Best:</strong>
-          <div class="chain">${chainHtml}</div>
-          <div style="flex-basis:100%; height:0;"></div>
-          <span style="color: rgba(255,255,255,.65); font-size:12px;">
-            ${N} left • conf ${fmtPct(result.confidence)}
-          </span>
+      const uniqueCount = entries.length;
+      const spreadNote = uniqueCount === 1 ? "locked" : `${uniqueCount} options`;
+
+      const row = document.createElement("div");
+      row.className = "posRow";
+      row.innerHTML = `
+        <div class="posTitle">
+          <div>${pos+1}${suffix(pos+1)} position</div>
+          <span>${spreadNote}</span>
         </div>
+        <div class="choices">${choicesHtml || `<span class="hint">No data</span>`}</div>
+      `;
+      predBlockEl.appendChild(row);
+    }
+
+    if (result.bestSequence){
+      const best = result.bestSequence.map(s => META[s].label).join(" → ");
+      summaryLineEl.style.display = "block";
+      summaryLineEl.innerHTML = `
+        <strong>Best gamble right now:</strong> ${best}<br/>
+        <strong>Remaining possibilities:</strong> ${N} sequence${N===1?"":"s"}<br/>
+        <strong>Confidence:</strong> ${fmtPct(result.confidence)} (guaranteed only when 100%)
       `;
     }
   }
 
-  function renderGuaranteedIconsOnly(seq){
+  function renderGuaranteed(seq){
     predBlockEl.innerHTML = "";
 
+    const best = seq.map(s => META[s].label).join(" → ");
     const wrap = document.createElement("div");
-    wrap.className = "bestRow";
-
-    const chainHtml = seq.map((sym, idx) => {
-      const pill = `
-        <span class="chainItem" style="border-color: rgba(93,255,182,.26); background: rgba(93,255,182,.08);">
-          <span class="miniIcon"><img src="${META[sym].img}" alt="" onerror="this.remove()"></span>
-        </span>
-      `;
-      return idx === 0 ? pill : `<span class="arrow">→</span>${pill}`;
-    }).join("");
-
+    wrap.className = "posRow";
     wrap.innerHTML = `
-      <strong>Guaranteed:</strong>
-      <div class="chain">${chainHtml}</div>
-      <div style="flex-basis:100%; height:0;"></div>
-      <span style="color: rgba(255,255,255,.65); font-size:12px;">100%</span>
+      <div class="posTitle">
+        <div>Guaranteed order (1st → 4th)</div>
+        <span>100%</span>
+      </div>
+      <div class="choices">
+        ${seq.map((sym) => `
+          <span class="choice" style="border-color: rgba(93,255,182,.26); background: rgba(93,255,182,.08);">
+            <span class="miniIcon"><img src="${META[sym].img}" alt="" onerror="this.remove()"></span>
+            ${META[sym].label}
+          </span>
+        `).join("")}
+      </div>
+      <div class="bigLine" style="margin-top:10px;">
+        <strong>Sequence:</strong> ${best}
+      </div>
     `;
-
     predBlockEl.appendChild(wrap);
+  }
+
+  function suffix(n){
+    if (n % 100 >= 11 && n % 100 <= 13) return "th";
+    if (n % 10 === 1) return "st";
+    if (n % 10 === 2) return "nd";
+    if (n % 10 === 3) return "rd";
+    return "th";
   }
 
   // =========================
@@ -440,6 +427,7 @@
     render();
   }
 
+  // Lock only when guaranteed
   lockBtn.addEventListener("click", () => {
     const result = infer(state.selected);
     if (result.hypotheses.length === 1){
@@ -448,11 +436,13 @@
     }
   });
 
+  // Save game only when guaranteed (stores the only remaining sequence)
   saveGameBtn.addEventListener("click", () => {
     const result = infer(state.selected);
     if (result.hypotheses.length !== 1) return;
     const mem = loadMemory();
     bumpSequence(mem, result.hypotheses[0].seq);
+    // keep unlocked so you can still tap Reset; not forcing lock
     render();
   });
 
@@ -490,6 +480,7 @@
 
   render();
 
+  // PWA
   if ("serviceWorker" in navigator){
     window.addEventListener("load", () => {
       navigator.serviceWorker.register("./sw.js").catch(() => {});
