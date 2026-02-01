@@ -371,6 +371,113 @@
       font-size:12.5px;
       line-height:1.35;
     }
+    /* ===== Top candidate orders UI ===== */
+
+   .lockStrip{
+     display:grid;
+     grid-template-columns: repeat(4, minmax(0, 1fr));
+     gap:10px;
+     padding:12px;
+     border-radius:18px;
+     border:1px solid rgba(255,255,255,.08);
+     background: rgba(255,255,255,.035);
+     margin-bottom:12px;
+   }
+
+   .lockSlot{
+     display:flex;
+     flex-direction:column;
+     align-items:center;
+     gap:8px;
+     padding:10px 8px;
+     border-radius:14px;
+     border:1px solid rgba(255,255,255,.08);
+     background: rgba(0,0,0,.18);
+   }
+
+   .lockSlot .tiny{
+     font-size:12px;
+     color: rgba(255,255,255,.45);
+     font-weight:800;
+   }
+
+   .lockIcon{
+     width:46px;
+     height:46px;
+     border-radius:14px;
+     border:1px solid rgba(255,255,255,.10);
+     background: rgba(0,0,0,.22);
+     display:grid;
+     place-items:center;
+     overflow:hidden;
+   }
+
+   .lockIcon img{
+     width:92%;
+     height:92%;
+     object-fit:contain;
+   }
+
+   .lockedGlow{
+     border-color: rgba(122,167,255,.45) !    important;
+     box-shadow: 0 0 0 2px   rgba(122,167,255,.18), 0 0 18px        rgba(122,167,255,.12);
+   }
+
+   .ordersList{
+     display:flex;
+     flex-direction:column;
+     gap:10px;
+   }
+
+   .orderCard{
+     display:flex;
+     align-items:center;
+     justify-content:space-between;
+     gap:12px;
+     padding:12px;
+     border-radius:18px;
+     border:1px solid rgba(255,255,255,.08);
+     background: rgba(255,255,255,.035);
+   }
+
+   .orderChain{
+     display:flex;
+     align-items:center;
+     gap:10px;
+     flex-wrap:wrap;
+   }
+
+   .posIcon{
+     width:46px;
+     height:46px;
+     border-radius:14px;
+     border:1px solid rgba(255,255,255,.10);
+     background: rgba(0,0,0,.22);
+     display:grid;
+     place-items:center;
+     overflow:hidden;
+   }
+
+   .posIcon img{
+     width:92%;
+     height:92%;
+     object-fit:contain;
+   }
+
+   .orderOdds{
+     font-weight:950;
+     color: rgba(122,167,255,.95);
+     font-size:14px;
+     letter-spacing:.2px;
+     white-space:nowrap;
+   }
+
+   .sep{
+     color: rgba(255,255,255,.30);
+     font-weight:950;
+     font-size:16px;
+   }
+
   </style>
 </head>
 

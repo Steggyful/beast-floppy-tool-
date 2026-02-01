@@ -315,65 +315,107 @@ const subs = allSubseq4(row);
       gridEl.appendChild(tile);
     }
 
-    // Panel
-    predBlockEl.innerHTML = "";
-    summaryLineEl.style.display = "none";
+       // Panel
+       predBlockEl.innerHTML = "";
+       summaryLineEl.style.display = "none";
 
-    // Locked + guaranteed display
-    if (state.locked && N === 1){
-      renderGuaranteedIconsOnly(result.hypotheses[0].seq);
-      return;
-    }
+       // Locked + guaranteed display
+       if (state.locked && N === 1){
+           renderGuaranteedIconsOnly(result.hypotheses[0  ].seq);
+         return;
+       }
 
-    if (selCount === 0 || selCount > 4 || N === 0){
-      return;
-    }
+       if (selCount === 0 || selCount > 4 || N    === 0){
+         return;
+       }
 
-    // Compact 4-slot grid (top2 each) -- ICON + % ONLY
-    const total = result.totalWeight;
+       // ===== Show actual top candidate orders   (no fake stitched sequence) =====
+   const total = result.totalWeight;
 
-    const grid = document.createElement("div");
-    grid.className = "posGrid";
+   // locked positions across ALL remaining   hypotheses
+   const locked = [];
+   for (let i = 0; i < 4; i++){
+     const m = result.positionStats[i];
+     if (m.size === 1){
+       locked[i] = Array.from(m.keys())[0];
+     } else {
+       locked[i] = null;
+     }
+   }
 
-    for (let pos = 0; pos < 4; pos++){
-      const counts = result.positionStats[pos];
-      const entries = Array.from(counts.entries()).sort((a,b) => b[1]-a[1]);
-      const top = entries.slice(0, 2);
+   // sort hypotheses by weight desc
+   const ranked =    result.hypotheses.slice().sort((a,b) =>   b.weight - a.weight);
 
-      const uniqueCount = entries.length;
-      const spreadNote = uniqueCount === 1 ? "lock" : `${uniqueCount}`;
+   // take top 3 (or fewer)
+   const topK = ranked.slice(0, 3);
 
-      const slot = document.createElement("div");
-      slot.className = "slot";
+   // clear panel + summary
+   predBlockEl.innerHTML = "";
+   summaryLineEl.style.display = "none";
 
-      slot.innerHTML = `
-        <div class="slotHead">
-          <div>${pos+1}${suffix(pos+1)}</div>
-          <span>${spreadNote}</span>
-        </div>
-        <div class="slotChoices">
-          ${top.map(([sym, c]) => {
-            const p = total > 0 ? (c / total) : 0;
-            return `
-              <div class="chip">
-                <div class="chipLeft">
-                  <span class="miniIcon"><img src="${META[sym].img}" alt="" onerror="this.remove()"></span>
-                </div>
-                <span class="chipPct">${fmtPct(p)}</span>
-              </div>
-            `;
-          }).join("")}
-        </div>
-      `;
+   // Locked strip
+   const lockStrip =       document.createElement("div");
+   lockStrip.className = "lockStrip";
+   lockStrip.innerHTML = [0,1,2,3].map(i => {
+     const sym = locked[i];
+     if (!sym){
+       return `
+         <div class="lockSlot">
+           <div class="tiny">${i+1}${suffix(i+1)}</div>
+           <div class="lockIcon"><div style="opacity:.25;color:rgba(255,255,255,.5);font-weight:900;">?</div></div>
+           <div class="tiny">open</div>
+         </div>
+       `;
+     }
+     return `
+       <div class="lockSlot">
+         <div class="tiny">${i+1}${suffix(i+1)}  </div>
+         <div class="lockIcon lockedGlow"><img  src="${META[sym].img}" alt=""  onerror="this.remove()"></div>
+         <div class="tiny">locked</div>
+       </div>
+     `;
+   }).join("");
 
-      grid.appendChild(slot);
-    }
+   predBlockEl.appendChild(lockStrip);
 
-    predBlockEl.appendChild(grid);
+   // Candidate orders list
+   const list = document.createElement("div");
+   list.className = "ordersList";
 
-    // Best gamble row -- ICONS ONLY
-    if (result.bestSequence){
-      summaryLineEl.style.display = "block";
+   for (const h of topK){
+     const p = total > 0 ? (h.weight / total) : 0;
+
+     const chain = h.seq.map((sym, idx) => {
+       const isLocked = locked[idx] && locked[idx] === sym;
+       const cls = isLocked ? "posIcon lockedGlow" : "posIcon";
+       const icon = `<span class="${cls}"><img src="${META[sym].img}" alt="" onerror="this.remove()"></span>`;
+       return idx === 0 ? icon : `<span    class="sep">→</span>${icon}`;
+     }).join("");
+
+     const card = document.createElement("div");
+     card.className = "orderCard";
+     card.innerHTML = `
+       <div class="orderChain">${chain}</div>
+       <div class="orderOdds">${fmtPct(p)}</div>
+     `;
+     list.appendChild(card);
+   }
+
+   predBlockEl.appendChild(list);
+
+   // Footer line
+   summaryLineEl.style.display = "block";
+   const bestP = topK.length ? (topK[0].weight /   total) : 0;
+   summaryLineEl.innerHTML = `
+     <div class="bestRow">
+       <strong>Shown:</strong> Top $ {topK.length} of ${N} possible
+      <div style="flex-basis:100%; height:0;"></div>
+       <span style="color:  rgba(255,255,255,.65); font-size:12px;">
+         ${N} left • top pick ${fmtPct(bestP)}
+       </span>
+     </div>
+   `;
+
 
       const chainHtml = result.bestSequence.map((sym, idx) => {
         const pill = `
