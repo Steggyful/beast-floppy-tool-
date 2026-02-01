@@ -110,21 +110,38 @@
   const clearMemBtn = document.getElementById("clearMemBtn");
   const importFile = document.getElementById("importFile");
 
-function allSubseq4(row){
-  const out = [];
-  // choose 4 indices i<j<k<l from 0..5 (C(6,4)=15)
-  for (let i = 0; i < 6; i++){
-    for (let j = i+1; j < 6; j++){
-      for (let k = j+1; k < 6; k++){
-        for (let l = k+1; l < 6; l++){
-          out.push([row[i], row[j], row[k], row[l]]);
+  // =========================
+  //  UI helpers
+  // =========================
+  function fmtPct(p){
+    return `${Math.round(p * 100)}%`;
+  }
+
+  function suffix(n){
+    if (n % 100 >= 11 && n % 100 <= 13) return "th";
+    if (n % 10 === 1) return "st";
+    if (n % 10 === 2) return "nd";
+    if (n % 10 === 3) return "rd";
+    return "th";
+  }
+
+  // =========================
+  //  Core combinatorics: all ordered 4-of-6 subsequences
+  //  C(6,4)=15 per row
+  // =========================
+  function allSubseq4(row){
+    const out = [];
+    for (let i = 0; i < 6; i++){
+      for (let j = i+1; j < 6; j++){
+        for (let k = j+1; k < 6; k++){
+          for (let l = k+1; l < 6; l++){
+            out.push([row[i], row[j], row[k], row[l]]);
+          }
         }
       }
     }
+    return out;
   }
-  return out;
-}
-
 
   // =========================
   //  INFERENCE ENGINE (weighted by memory)
@@ -137,7 +154,6 @@ function allSubseq4(row){
         hypotheses: [],
         possibleSymbols: new Set(),
         positionStats: [new Map(), new Map(), new Map(), new Map()],
-        bestSequence: null,
         confidence: 0,
         reason: "too_many_selected",
         totalWeight: 0
@@ -155,25 +171,25 @@ function allSubseq4(row){
       }
       if (!ok) continue;
 
-      // all 4-of-6 subsequences (order preserved, not necessarily adjacent)
-const subs = allSubseq4(row);
+      const subs = allSubseq4(row);
 
-  for (const seq of subs){
-    let wOk = true;
-    for (const s of selected){
-      if (!seq.includes(s)) { wOk = false;   break; }
+      for (const seq of subs){
+        // must contain all selected (membership only)
+        let ok2 = true;
+        for (const s of selected){
+          if (!seq.includes(s)) { ok2 = false; break; }
+        }
+        if (!ok2) continue;
+
+        const k = seqKey(seq);
+        const seen = mem.sequences[k] || 0;
+
+        // Laplace smoothing: unseen sequences still have weight
+        const weight = (seen + 1);
+
+        hypotheses.push({ seq, weight });
+      }
     }
-    if (!wOk) continue;
-
-    const k = seqKey(seq);
-    const seen = mem.sequences[k] || 0;
-
-  // Laplace smoothing so unseen sequences still have weight 1
-    const weight = (seen + 1);
-
-    hypotheses.push({ seq, weight });
-  }
-}
 
     const totalWeight = hypotheses.reduce((sum,h)=>sum+h.weight, 0);
 
@@ -188,46 +204,95 @@ const subs = allSubseq4(row);
       }
     }
 
-    let bestSequence = null;
-    if (hypotheses.length > 0){
-      bestSequence = [];
-      for (let i = 0; i < 4; i++){
-        const entries = Array.from(positionStats[i].entries());
-        entries.sort((a,b) => b[1] - a[1]);
-        bestSequence.push(entries[0][0]);
-      }
-    }
-
-    let topHypProb = 0;
-    if (totalWeight > 0){
+    // Confidence here = probability of the single most likely full sequence (top hypothesis)
+    let topProb = 0;
+    if (totalWeight > 0 && hypotheses.length){
       const topW = Math.max(...hypotheses.map(h => h.weight));
-      topHypProb = topW / totalWeight;
+      topProb = topW / totalWeight;
     }
 
     return {
       hypotheses,
       possibleSymbols,
       positionStats,
-      bestSequence,
-      confidence: topHypProb,
+      confidence: topProb,
       reason: null,
       totalWeight
     };
   }
 
   // =========================
-  //  UI helpers
+  //  RENDER helpers: locked positions + ranked hypotheses
   // =========================
-  function fmtPct(p){
-    return `${Math.round(p * 100)}%`;
+  function computeLocked(positionStats){
+    const locked = [null,null,null,null];
+    for (let i = 0; i < 4; i++){
+      const m = positionStats[i];
+      if (m.size === 1){
+        locked[i] = Array.from(m.keys())[0];
+      }
+    }
+    return locked;
   }
 
-  function suffix(n){
-    if (n % 100 >= 11 && n % 100 <= 13) return "th";
-    if (n % 10 === 1) return "st";
-    if (n % 10 === 2) return "nd";
-    if (n % 10 === 3) return "rd";
-    return "th";
+  function renderLockedStrip(locked){
+    const strip = document.createElement("div");
+    strip.className = "lockStrip";
+
+    strip.innerHTML = [0,1,2,3].map(i => {
+      const sym = locked[i];
+      if (!sym){
+        return `
+          <div class="lockSlot">
+            <div class="tiny">${i+1}${suffix(i+1)}</div>
+            <div class="lockIcon">
+              <div style="opacity:.25;color:rgba(255,255,255,.5);font-weight:900;">?</div>
+            </div>
+            <div class="tiny">open</div>
+          </div>
+        `;
+      }
+      return `
+        <div class="lockSlot">
+          <div class="tiny">${i+1}${suffix(i+1)}</div>
+          <div class="lockIcon lockedGlow">
+            <img src="${META[sym].img}" alt="" onerror="this.remove()">
+          </div>
+          <div class="tiny">locked</div>
+        </div>
+      `;
+    }).join("");
+
+    return strip;
+  }
+
+  function renderTopOrders(hypotheses, totalWeight, locked, topK=3){
+    const ranked = hypotheses.slice().sort((a,b) => b.weight - a.weight);
+    const picks = ranked.slice(0, topK);
+
+    const list = document.createElement("div");
+    list.className = "ordersList";
+
+    for (const h of picks){
+      const p = totalWeight > 0 ? (h.weight / totalWeight) : 0;
+
+      const chain = h.seq.map((sym, idx) => {
+        const isLocked = locked[idx] && locked[idx] === sym;
+        const cls = isLocked ? "posIcon lockedGlow" : "posIcon";
+        const icon = `<span class="${cls}"><img src="${META[sym].img}" alt="" onerror="this.remove()"></span>`;
+        return idx === 0 ? icon : `<span class="sep">→</span>${icon}`;
+      }).join("");
+
+      const card = document.createElement("div");
+      card.className = "orderCard";
+      card.innerHTML = `
+        <div class="orderChain">${chain}</div>
+        <div class="orderOdds">${fmtPct(p)}</div>
+      `;
+      list.appendChild(card);
+    }
+
+    return { list, picks, ranked };
   }
 
   // =========================
@@ -238,7 +303,8 @@ const subs = allSubseq4(row);
     const selCount = state.selected.size;
     const N = result.hypotheses.length;
 
-    // Save only when guaranteed and not locked
+    // Save only when guaranteed and not locked (still allowed if you only tapped 1–3,
+    // but Save should only happen when there is exactly 1 full order left)
     saveGameBtn.disabled = !(N === 1 && !state.locked);
 
     // Pills
@@ -275,13 +341,13 @@ const subs = allSubseq4(row);
     if (selCount === 0){
       sublineEl.textContent = "Select 1–4 symbols…";
     } else if (selCount > 4){
-      sublineEl.textContent = "You selected more than 4 (model assumes exactly 4 spawned).";
+      sublineEl.textContent = "You selected more than 4 (tool assumes 4 spawned).";
     } else if (N === 0){
-      sublineEl.textContent = "No valid sequences remain. Undo/reset and re-tap.";
+      sublineEl.textContent = "No valid orders remain. Undo/reset and re-tap.";
     } else if (N === 1){
-      sublineEl.textContent = "Guaranteed sequence found. Lock or Save.";
+      sublineEl.textContent = "Only one full order fits (100%). Lock or Save.";
     } else {
-      sublineEl.textContent = "Not guaranteed yet -- odds below (weighted by your history).";
+      sublineEl.textContent = "Top candidates + locked positions update as you tap.";
     }
 
     lockBtn.disabled = !(N === 1 && !state.locked);
@@ -293,8 +359,11 @@ const subs = allSubseq4(row);
       tile.className = "tile";
 
       const isSelected = state.selected.has(sym);
-      const hasFilter = selCount > 0 && selCount <= 4;
-      const impossible = hasFilter && N > 0 && !result.possibleSymbols.has(sym);
+
+      // Fade logic: ONLY fade once you’ve started and we still have hypotheses.
+      // This fade shows symbols that can’t appear in ANY remaining valid order.
+      const canFade = (selCount > 0 && selCount <= 4 && N > 0);
+      const impossible = (canFade && !result.possibleSymbols.has(sym));
 
       if (isSelected) tile.classList.add("selected");
       if (!isSelected && impossible) tile.classList.add("impossible");
@@ -315,153 +384,76 @@ const subs = allSubseq4(row);
       gridEl.appendChild(tile);
     }
 
-       // Panel
-       predBlockEl.innerHTML = "";
-       summaryLineEl.style.display = "none";
+    // Panel
+    predBlockEl.innerHTML = "";
+    summaryLineEl.style.display = "none";
 
-       // Locked + guaranteed display
-       if (state.locked && N === 1){
-           renderGuaranteedIconsOnly(result.hypotheses[0  ].seq);
-         return;
-       }
-
-       if (selCount === 0 || selCount > 4 || N    === 0){
-         return;
-       }
-
-       // ===== Show actual top candidate orders   (no fake stitched sequence) =====
-   const total = result.totalWeight;
-
-   // locked positions across ALL remaining   hypotheses
-   const locked = [];
-   for (let i = 0; i < 4; i++){
-     const m = result.positionStats[i];
-     if (m.size === 1){
-       locked[i] = Array.from(m.keys())[0];
-     } else {
-       locked[i] = null;
-     }
-   }
-
-   // sort hypotheses by weight desc
-   const ranked =    result.hypotheses.slice().sort((a,b) =>   b.weight - a.weight);
-
-   // take top 3 (or fewer)
-   const topK = ranked.slice(0, 3);
-
-   // clear panel + summary
-   predBlockEl.innerHTML = "";
-   summaryLineEl.style.display = "none";
-
-   // Locked strip
-   const lockStrip =       document.createElement("div");
-   lockStrip.className = "lockStrip";
-   lockStrip.innerHTML = [0,1,2,3].map(i => {
-     const sym = locked[i];
-     if (!sym){
-       return `
-         <div class="lockSlot">
-           <div class="tiny">${i+1}${suffix(i+1)}</div>
-           <div class="lockIcon"><div style="opacity:.25;color:rgba(255,255,255,.5);font-weight:900;">?</div></div>
-           <div class="tiny">open</div>
-         </div>
-       `;
-     }
-     return `
-       <div class="lockSlot">
-         <div class="tiny">${i+1}${suffix(i+1)}  </div>
-         <div class="lockIcon lockedGlow"><img  src="${META[sym].img}" alt=""  onerror="this.remove()"></div>
-         <div class="tiny">locked</div>
-       </div>
-     `;
-   }).join("");
-
-   predBlockEl.appendChild(lockStrip);
-
-   // Candidate orders list
-   const list = document.createElement("div");
-   list.className = "ordersList";
-
-   for (const h of topK){
-     const p = total > 0 ? (h.weight / total) : 0;
-
-     const chain = h.seq.map((sym, idx) => {
-       const isLocked = locked[idx] && locked[idx] === sym;
-       const cls = isLocked ? "posIcon lockedGlow" : "posIcon";
-       const icon = `<span class="${cls}"><img src="${META[sym].img}" alt="" onerror="this.remove()"></span>`;
-       return idx === 0 ? icon : `<span    class="sep">→</span>${icon}`;
-     }).join("");
-
-     const card = document.createElement("div");
-     card.className = "orderCard";
-     card.innerHTML = `
-       <div class="orderChain">${chain}</div>
-       <div class="orderOdds">${fmtPct(p)}</div>
-     `;
-     list.appendChild(card);
-   }
-
-   predBlockEl.appendChild(list);
-
-   // Footer line
-   summaryLineEl.style.display = "block";
-   const bestP = topK.length ? (topK[0].weight /   total) : 0;
-   summaryLineEl.innerHTML = `
-     <div class="bestRow">
-       <strong>Shown:</strong> Top $ {topK.length} of ${N} possible
-      <div style="flex-basis:100%; height:0;"></div>
-       <span style="color:  rgba(255,255,255,.65); font-size:12px;">
-         ${N} left • top pick ${fmtPct(bestP)}
-       </span>
-     </div>
-   `;
-
-
-      const chainHtml = result.bestSequence.map((sym, idx) => {
-        const pill = `
-          <span class="chainItem">
-            <span class="miniIcon"><img src="${META[sym].img}" alt="" onerror="this.remove()"></span>
-          </span>
-        `;
-        return idx === 0 ? pill : `<span class="arrow">→</span>${pill}`;
-      }).join("");
-
-      summaryLineEl.innerHTML = `
-        <div class="bestRow">
-          <strong>Best:</strong>
-          <div class="chain">${chainHtml}</div>
-          <div style="flex-basis:100%; height:0;"></div>
-          <span style="color: rgba(255,255,255,.65); font-size:12px;">
-            ${N} left • conf ${fmtPct(result.confidence)}
-          </span>
-        </div>
-      `;
+    // Locked + guaranteed display
+    if (state.locked && N === 1){
+      renderGuaranteed(result.hypotheses[0].seq);
+      return;
     }
+
+    // Nothing to show yet
+    if (selCount === 0 || selCount > 4 || N === 0){
+      return;
+    }
+
+    // Show locked positions + top candidate orders
+    const locked = computeLocked(result.positionStats);
+    predBlockEl.appendChild(renderLockedStrip(locked));
+
+    const { list, picks, ranked } = renderTopOrders(result.hypotheses, result.totalWeight, locked, 3);
+    predBlockEl.appendChild(list);
+
+    // Footer line
+    summaryLineEl.style.display = "block";
+    const bestP = picks.length && result.totalWeight > 0 ? (picks[0].weight / result.totalWeight) : 0;
+    summaryLineEl.innerHTML = `
+      <div class="bestRow">
+        <strong>Shown:</strong> Top ${picks.length} of ${ranked.length} possible
+        <div style="flex-basis:100%; height:0;"></div>
+        <span style="color: rgba(255,255,255,.65); font-size:12px;">
+          ${ranked.length} left • top pick ${fmtPct(bestP)}
+        </span>
+      </div>
+    `;
   }
 
-  function renderGuaranteedIconsOnly(seq){
+  function renderGuaranteed(seq){
     predBlockEl.innerHTML = "";
 
-    const wrap = document.createElement("div");
-    wrap.className = "bestRow";
+    // compute locked strip (everything locked)
+    const locked = seq.slice();
+    predBlockEl.appendChild(renderLockedStrip(locked));
 
-    const chainHtml = seq.map((sym, idx) => {
-      const pill = `
-        <span class="chainItem" style="border-color: rgba(93,255,182,.26); background: rgba(93,255,182,.08);">
-          <span class="miniIcon"><img src="${META[sym].img}" alt="" onerror="this.remove()"></span>
-        </span>
-      `;
-      return idx === 0 ? pill : `<span class="arrow">→</span>${pill}`;
+    // show the guaranteed order as a single order card
+    const list = document.createElement("div");
+    list.className = "ordersList";
+
+    const chain = seq.map((sym, idx) => {
+      const icon = `<span class="posIcon lockedGlow"><img src="${META[sym].img}" alt="" onerror="this.remove()"></span>`;
+      return idx === 0 ? icon : `<span class="sep">→</span>${icon}`;
     }).join("");
 
-    wrap.innerHTML = `
-      <strong>Guaranteed:</strong>
-      <div class="chain">${chainHtml}</div>
-      <div style="flex-basis:100%; height:0;"></div>
-      <span style="color: rgba(255,255,255,.65); font-size:12px;">100%</span>
+    const card = document.createElement("div");
+    card.className = "orderCard";
+    card.innerHTML = `
+      <div class="orderChain">${chain}</div>
+      <div class="orderOdds">100%</div>
     `;
+    list.appendChild(card);
 
-    predBlockEl.appendChild(wrap);
+    predBlockEl.appendChild(list);
+
+    summaryLineEl.style.display = "block";
+    summaryLineEl.innerHTML = `
+      <div class="bestRow">
+        <strong>Guaranteed:</strong> Only one order remains.
+        <div style="flex-basis:100%; height:0;"></div>
+        <span style="color: rgba(255,255,255,.65); font-size:12px;">Lock on, save if you want.</span>
+      </div>
+    `;
   }
 
   // =========================
